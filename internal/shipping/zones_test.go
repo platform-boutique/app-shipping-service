@@ -154,8 +154,8 @@ func TestGetQuote_EveryZoneViaRPC(t *testing.T) {
 		{"Germany", ZoneEurope, 1999 + 300, 8},
 		{"uk", ZoneEurope, 1999 + 300, 8},
 		{"Japan", ZoneRestOfWorld, 2999 + 450, 14},
-		{"Atlantis", ZoneRestOfWorld, 2999 + 450, 14}, // unrecognised: priced as rest of world
-		{"", DefaultZone, 899 + 150, 3},               // blank: default zone
+		{"Thailand", ZoneRestOfWorld, 2999 + 450, 14},
+		{"", DefaultZone, 899 + 150, 3}, // blank: default zone
 	}
 	svc := newTestService()
 	for _, c := range cases {

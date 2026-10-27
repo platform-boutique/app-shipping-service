@@ -128,9 +128,13 @@ var numericPostcode = map[string]bool{
 	"FI": true, "AU": true,
 }
 
+// normaliseCountryInput lower-cases, drops dots and apostrophes, folds accents
+// and turns hyphens, commas, parentheses and "&" into single spaces.
 func normaliseCountryInput(s string) string {
-	s = strings.ReplaceAll(s, ".", "")
-	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+	s = strings.ToLower(s)
+	s = strings.NewReplacer(".", "", "'", "", "\u2019", "", "-", " ", ",", " ", "(", " ", ")", " ", "&", " and ").Replace(s)
+	s = diacritics.Replace(s)
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // NormalizeCountry turns a country given as an ISO 3166-1 alpha-2 code (any
@@ -141,10 +145,10 @@ func NormalizeCountry(country string) (code string, ok bool) {
 	if n == "" {
 		return "", false
 	}
-	if c, found := countryNames[n]; found {
+	if c, found := countryIndex[n]; found {
 		return c, true
 	}
-	if up := strings.ToUpper(n); len(up) == 2 && isoCodes[up] {
+	if up := strings.ToUpper(n); len(up) == 2 && (isoCodes[up] || extraCodes[up]) {
 		return up, true
 	}
 	return "", false
@@ -156,7 +160,8 @@ var ErrAddressRequired = errors.New("address is required")
 // ValidateAddress checks an address for ShipOrder and returns the normalised
 // ISO country code. Rules (deliberately lenient):
 //   - street_address, city and country must be non-blank;
-//   - country must be an ISO 3166-1 alpha-2 code or a known name;
+//   - country must be an ISO 3166-1 alpha-2 code or a known name (ResolveCountry,
+//     the same check GetQuote applies when a country is given);
 //   - zip_code must never be negative, and must be > 0 for countries with
 //     purely numeric postal codes (see numericPostcode).
 //
@@ -172,13 +177,9 @@ func ValidateAddress(a *pb.Address) (string, error) {
 	if strings.TrimSpace(a.GetCity()) == "" {
 		problems = append(problems, "city is required")
 	}
-	code := ""
-	if strings.TrimSpace(a.GetCountry()) == "" {
-		problems = append(problems, "country is required")
-	} else if c, ok := NormalizeCountry(a.GetCountry()); ok {
-		code = c
-	} else {
-		problems = append(problems, fmt.Sprintf("country %q is not an ISO 3166-1 alpha-2 code or a known country name", a.GetCountry()))
+	code, err := ResolveCountry(a.GetCountry())
+	if err != nil {
+		problems = append(problems, err.Error())
 	}
 	if a.GetZipCode() < 0 {
 		problems = append(problems, "zip_code must not be negative")

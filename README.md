@@ -24,8 +24,8 @@ Package `hipstershop`, service `ShippingService` ([`proto/shipping.proto`](proto
 
 | Method | Request | Response | Behaviour |
 |---|---|---|---|
-| `GetQuote` | `{ Address address, repeated CartItem items }` | `{ Money cost_usd, int32 estimated_days, string zone }` | Prices by **destination zone and item count** (see the tariff below). Never rejects an address: a **nil address or blank country uses the default zone (`domestic`)**, an unrecognised country is priced as `rest_of_world`. 0 items → $0.00 and `estimated_days` 0. Always USD |
-| `ShipOrder` | `{ Address address, repeated CartItem items }` | `{ string tracking_id }` | Validates the address (rules below); a nil or invalid address → `INVALID_ARGUMENT` with a message listing every problem. Otherwise builds a tracking ID like `XK-21345-109876543` from random letters/digits and the length of `"<street>, <city>, <state>"`. Nothing is dispatched or stored |
+| `GetQuote` | `{ Address address, repeated CartItem items }` | `{ Money cost_usd, int32 estimated_days, string zone }` | Prices by **destination zone and item count** (see the tariff below). A **nil address or blank country uses the default zone (`domestic`)** (the cart-page estimate sends none); a country that is given is checked exactly like `ShipOrder` does (same function, `ResolveCountry`) and an unrecognised one → `INVALID_ARGUMENT` (`invalid address: country "X" is not an ISO 3166-1 alpha-2 code or a known country name (use e.g. "United States" or "US")`), so checkout fails at quote time, before the card is charged. 0 items → $0.00 and `estimated_days` 0. Always USD |
+| `ShipOrder` | `{ Address address, repeated CartItem items }` | `{ string tracking_id }` | Validates the address (rules below); a nil or invalid address → `INVALID_ARGUMENT` with a message listing every problem. Otherwise returns a **deterministic** tracking ID like `LN-64645-325830843`: letters and digits come from the SHA-256 of the order content (street, city, state, ISO country code, zip, and the items as product id and summed quantity, sorted), the numbers in front are the length of that text and half of it. A retried `ShipOrder` for the same order returns the same ID (two identical orders to the same address share one). Nothing is dispatched or stored |
 
 `Money` = `{ currency_code, int64 units, int32 nanos }`. `frontend` calls `GetQuote` with a nil address and the cart items for the cart-page estimate; checkout passes the real address. `estimated_days` (field 2) and `zone` (field 3) were added to `GetQuoteResponse`; existing fields and numbers are unchanged, so old clients keep working.
 
@@ -42,12 +42,12 @@ The request carries **no weights** (only `product_id` and `quantity`), so the pr
 
 One item to the US still costs $8.99, the former flat rate.
 
-### Address validation (`ShipOrder` only)
+### Address validation (`ShipOrder`; the country check also in `GetQuote`)
 
 Deliberately lenient:
 
 - `street_address`, `city` and `country` must be non-blank; `state` is not checked.
-- `country` must be an ISO 3166-1 alpha-2 code (any case, all 249 assigned codes) or one of about 100 known names/aliases (e.g. `United States`, `USA`, `U.S.A.`, `UK`, `Great Britain`, `Deutschland`), normalised to the ISO code. The frontend form sends `United States` by default.
+- `country` must be an ISO 3166-1 alpha-2 code (any case, all 249 assigned codes) or an English country name or common alias (all 249 ISO names plus Kosovo/`XK`, e.g. `United States`, `USA`, `U.S.A.`, `UK`, `Great Britain`, `Deutschland`, `Thailand`, `Taiwan`, `Vietnam`, `Hong Kong`, `Ivory Coast`/`Côte d'Ivoire`; case, dots, hyphens, commas and accents are ignored), normalised to the ISO code. `GetQuote` applies only this country check (not street, city or zip) and only when a non-blank country is given. The frontend form sends `United States` by default.
 - `zip_code` is an `int32`, so alphanumeric postcodes (GB, CA, NL, ...) cannot be represented: it is **required (> 0) only for countries with purely numeric postcodes** — US, MX, DE, FR, IT, ES, AT, CH, BE, DK, NO, SE, FI, AU — and otherwise may be 0. A negative zip is always rejected. Its format/range is not checked.
 
 A recovery interceptor turns any handler panic into `INTERNAL` instead of crashing the process (defence in depth; the handlers are written not to panic).
@@ -195,7 +195,8 @@ curl -s localhost:9090/debug/pprof/ | head
 │   ├── service.go                # GetQuote / ShipOrder handlers, recovery interceptor
 │   ├── quote.go                  # zones, tariff table, quote logic
 │   ├── address.go                # country normalisation, ShipOrder address validation
-│   └── tracker.go                # random tracking-ID generation
+│   ├── countries.go              # ISO country list, aliases, ResolveCountry (shared by GetQuote and ShipOrder)
+│   └── tracker.go                # deterministic tracking-ID generation
 ├── proto/                        # shipping.proto + generated Go
 ├── Dockerfile
 ├── go.mod / go.sum
@@ -205,9 +206,9 @@ curl -s localhost:9090/debug/pprof/ | head
 
 ## Known limitations
 
-- Simulation only: nothing is actually shipped or stored; the tracking ID is random and cannot be looked up.
+- Simulation only: nothing is actually shipped or stored; the tracking ID is a hash of the order content and cannot be looked up.
 - Quotes ignore weight and size (the request has none) and the state/zip; the zone table is a fixed, made-up tariff.
-- Address validation is lenient: it checks presence, the country and (for numeric-postcode countries) that a zip is given, not that the address exists or that the zip matches the city. `GetQuote` validates nothing.
-- `ShipOrder` is called by checkout after the card is charged, so an address rejected here currently fails the order after payment (no refund until checkout's saga lands).
+- Address validation is lenient: it checks presence, the country and (for numeric-postcode countries) that a zip is given, not that the address exists or that the zip matches the city. `GetQuote` checks only the country (when given).
+- `ShipOrder` is called by checkout after the card is charged. A country that `ShipOrder` would reject is now rejected by `GetQuote` first (checkout quotes before charging), but a street/city/zip problem is only found by `ShipOrder`, i.e. after payment, until checkout refunds on a failed shipment.
 - pprof is always exposed on the metrics port.
 - `amd64`-only image that runs as root unless the pod overrides it.

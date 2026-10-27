@@ -36,27 +36,35 @@ func itemCount(items []*pb.CartItem) int {
 	return count
 }
 
-// quoteZone picks the zone for GetQuote. GetQuote never rejects an address:
-// no address or a blank country uses DefaultZone, a country that cannot be
-// recognised is priced as rest of world.
-func quoteZone(a *pb.Address) Zone {
+// quoteZone picks the zone for GetQuote. No address or a blank country uses
+// DefaultZone (the cart-page estimate sends none). A country that is given is
+// checked with ResolveCountry, exactly as ShipOrder does, so a country that
+// ShipOrder would reject fails here, at quote time, instead of after the
+// card was charged.
+func quoteZone(a *pb.Address) (Zone, error) {
 	if strings.TrimSpace(a.GetCountry()) == "" {
-		return DefaultZone
+		return DefaultZone, nil
 	}
-	if code, ok := NormalizeCountry(a.GetCountry()); ok {
-		return ZoneForCountry(code)
+	code, err := ResolveCountry(a.GetCountry())
+	if err != nil {
+		return "", err
 	}
-	return ZoneRestOfWorld
+	return ZoneForCountry(code), nil
 }
 
 // GetQuote produces a shipping quote (cost) in USD for the destination zone
-// and the number of items.
+// and the number of items. A country that is given but not recognised is
+// rejected with INVALID_ARGUMENT, the same check ShipOrder applies.
 func (s *Service) GetQuote(_ context.Context, req *pb.GetQuoteRequest) (*pb.GetQuoteResponse, error) {
 	s.log.Info("[GetQuote] received request")
 	defer s.log.Info("[GetQuote] completed request")
 
+	zone, err := quoteZone(req.GetAddress())
+	if err != nil {
+		s.log.WithField("reason", err.Error()).Warn("[GetQuote] rejected country")
+		return nil, status.Error(codes.InvalidArgument, "invalid address: "+err.Error())
+	}
 	count := itemCount(req.GetItems())
-	zone := quoteZone(req.GetAddress())
 	quote := QuoteFor(zone, count)
 
 	var days int32

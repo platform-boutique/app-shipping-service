@@ -39,7 +39,8 @@ curl -s localhost:9090/debug/pprof/ | head
 │   ├── service.go                # GetQuote / ShipOrder handlers, recovery interceptor
 │   ├── quote.go                  # zones, tariff table, quote logic
 │   ├── address.go                # country normalisation, ShipOrder address validation
-│   └── tracker.go                # random tracking-ID generation
+│   ├── countries.go              # ISO country list, aliases, ResolveCountry (shared by GetQuote and ShipOrder)
+│   └── tracker.go                # deterministic tracking-ID generation
 ├── proto/                        # shipping.proto + generated Go
 ├── Dockerfile
 ├── go.mod / go.sum
