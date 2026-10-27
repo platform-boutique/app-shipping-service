@@ -36,8 +36,9 @@ curl -s localhost:9090/debug/pprof/ | head
 ```
 ├── cmd/server/main.go            # entrypoint: tracing, profiling, gRPC server, metrics + pprof server
 ├── internal/shipping/
-│   ├── service.go                # GetQuote / ShipOrder handlers
-│   ├── quote.go                  # flat-rate quote logic ($8.99)
+│   ├── service.go                # GetQuote / ShipOrder handlers, recovery interceptor
+│   ├── quote.go                  # zones, tariff table, quote logic
+│   ├── address.go                # country normalisation, ShipOrder address validation
 │   └── tracker.go                # random tracking-ID generation
 ├── proto/                        # shipping.proto + generated Go
 ├── Dockerfile

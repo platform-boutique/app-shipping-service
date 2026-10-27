@@ -3,7 +3,7 @@
 <div class="pd-hero" markdown>
 <span class="pd-kicker">service · platform-demo</span>
 
-A gRPC service that provides shipping quotes and "ships" orders for the platform-demo e-commerce platform. It is a simulation: quotes are a flat rate and `ShipOrder` just fabricates a tracking ID. It is stateless, has no downstream dependencies, and is called by `checkout-service` (and by `frontend` for the cart-page shipping estimate).
+A gRPC service that provides shipping quotes and "ships" orders for the platform-demo e-commerce platform. It is a simulation: quotes come from a made-up tariff by destination zone and item count, and `ShipOrder` validates the address and fabricates a tracking ID. It is stateless, has no downstream dependencies, and is called by `checkout-service` (and by `frontend` for the cart-page shipping estimate).
 </div>
 
 <div class="pd-facts" markdown>

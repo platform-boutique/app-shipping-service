@@ -1,6 +1,6 @@
 # shipping-service
 
-A gRPC service that provides shipping quotes and "ships" orders for the platform-demo e-commerce platform. It is a simulation: quotes are a flat rate and `ShipOrder` just fabricates a tracking ID. It is stateless, has no downstream dependencies, and is called by `checkout-service` (and by `frontend` for the cart-page shipping estimate).
+A gRPC service that provides shipping quotes and "ships" orders for the platform-demo e-commerce platform. It is a simulation: quotes come from a made-up tariff by destination zone and item count, and `ShipOrder` validates the address and fabricates a tracking ID. It is stateless, has no downstream dependencies, and is called by `checkout-service` (and by `frontend` for the cart-page shipping estimate).
 
 Part of the [platform-demo](https://github.com/platform-boutique) platform — microservices, observability (LGTM stack), GitOps (Argo CD), policy enforcement (Kyverno), infrastructure provisioning (Terraform) and an internal developer portal (Backstage). See the master `README.md` in the platform-demo root for the whole-system view.
 
@@ -24,10 +24,33 @@ Package `hipstershop`, service `ShippingService` ([`proto/shipping.proto`](proto
 
 | Method | Request | Response | Behaviour |
 |---|---|---|---|
-| `GetQuote` | `{ Address address, repeated CartItem items }` | `{ Money cost_usd }` | Sums item quantities. **0 items → $0.00; any items → flat $8.99 USD** (address is ignored) |
-| `ShipOrder` | `{ Address address, repeated CartItem items }` | `{ string tracking_id }` | Builds a tracking ID like `XK-21345-109876543` from random letters/digits and the length of `"<street>, <city>, <state>"`. Nothing is dispatched or stored. The request **must include an address** — a nil address dereferences a nil pointer, and gRPC-Go does not recover handler panics, so it would crash the process |
+| `GetQuote` | `{ Address address, repeated CartItem items }` | `{ Money cost_usd, int32 estimated_days, string zone }` | Prices by **destination zone and item count** (see the tariff below). Never rejects an address: a **nil address or blank country uses the default zone (`domestic`)**, an unrecognised country is priced as `rest_of_world`. 0 items → $0.00 and `estimated_days` 0. Always USD |
+| `ShipOrder` | `{ Address address, repeated CartItem items }` | `{ string tracking_id }` | Validates the address (rules below); a nil or invalid address → `INVALID_ARGUMENT` with a message listing every problem. Otherwise builds a tracking ID like `XK-21345-109876543` from random letters/digits and the length of `"<street>, <city>, <state>"`. Nothing is dispatched or stored |
 
-`Money` = `{ currency_code, int64 units, int32 nanos }`. `frontend` calls `GetQuote` with a nil address and the cart items for the cart-page estimate; checkout passes the real address.
+`Money` = `{ currency_code, int64 units, int32 nanos }`. `frontend` calls `GetQuote` with a nil address and the cart items for the cart-page estimate; checkout passes the real address. `estimated_days` (field 2) and `zone` (field 3) were added to `GetQuoteResponse`; existing fields and numbers are unchanged, so old clients keep working.
+
+### Tariff (simulated)
+
+The request carries **no weights** (only `product_id` and `quantity`), so the price depends on the zone and the summed item quantity only (non-positive quantities are ignored). Price = base (first item) + per extra item × (items − 1).
+
+| Zone (`zone`) | Countries | Base | Per extra item | `estimated_days` |
+|---|---|---|---|---|
+| `domestic` | US | $8.99 | $1.50 | 3 |
+| `north_america` | CA, MX | $14.99 | $2.50 | 6 |
+| `europe` | EU, EEA, GB, CH, the European microstates, AL, BA, ME, MK, RS, MD, UA, BY and the Crown dependencies/Nordic territories (AX, FO, GG, GI, IM, JE, SJ) | $19.99 | $3.00 | 8 |
+| `rest_of_world` | everything else (including US territories such as PR, and RU, TR) | $29.99 | $4.50 | 14 |
+
+One item to the US still costs $8.99, the former flat rate.
+
+### Address validation (`ShipOrder` only)
+
+Deliberately lenient:
+
+- `street_address`, `city` and `country` must be non-blank; `state` is not checked.
+- `country` must be an ISO 3166-1 alpha-2 code (any case, all 249 assigned codes) or one of about 100 known names/aliases (e.g. `United States`, `USA`, `U.S.A.`, `UK`, `Great Britain`, `Deutschland`), normalised to the ISO code. The frontend form sends `United States` by default.
+- `zip_code` is an `int32`, so alphanumeric postcodes (GB, CA, NL, ...) cannot be represented: it is **required (> 0) only for countries with purely numeric postcodes** — US, MX, DE, FR, IT, ES, AT, CH, BE, DK, NO, SE, FI, AU — and otherwise may be 0. A negative zip is always rejected. Its format/range is not checked.
+
+A recovery interceptor turns any handler panic into `INTERNAL` instead of crashing the process (defence in depth; the handlers are written not to panic).
 
 ## Configuration
 
@@ -169,8 +192,9 @@ curl -s localhost:9090/debug/pprof/ | head
 ```
 ├── cmd/server/main.go            # entrypoint: tracing, profiling, gRPC server, metrics + pprof server
 ├── internal/shipping/
-│   ├── service.go                # GetQuote / ShipOrder handlers
-│   ├── quote.go                  # flat-rate quote logic ($8.99)
+│   ├── service.go                # GetQuote / ShipOrder handlers, recovery interceptor
+│   ├── quote.go                  # zones, tariff table, quote logic
+│   ├── address.go                # country normalisation, ShipOrder address validation
 │   └── tracker.go                # random tracking-ID generation
 ├── proto/                        # shipping.proto + generated Go
 ├── Dockerfile
@@ -181,7 +205,9 @@ curl -s localhost:9090/debug/pprof/ | head
 
 ## Known limitations
 
-- Simulation only: flat $8.99, no address validation, nothing is actually shipped or stored.
-- `ShipOrder` dereferences `req.Address` without a nil check; a request with no address crashes the process (no recovery interceptor).
+- Simulation only: nothing is actually shipped or stored; the tracking ID is random and cannot be looked up.
+- Quotes ignore weight and size (the request has none) and the state/zip; the zone table is a fixed, made-up tariff.
+- Address validation is lenient: it checks presence, the country and (for numeric-postcode countries) that a zip is given, not that the address exists or that the zip matches the city. `GetQuote` validates nothing.
+- `ShipOrder` is called by checkout after the card is charged, so an address rejected here currently fails the order after payment (no refund until checkout's saga lands).
 - pprof is always exposed on the metrics port.
 - `amd64`-only image that runs as root unless the pod overrides it.
