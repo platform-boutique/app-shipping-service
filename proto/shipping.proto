@@ -35,6 +35,11 @@ message GetQuoteRequest {
 
 message GetQuoteResponse {
   Money cost_usd = 1;
+  // Added in the zones change (additive): simulated transit time in days and
+  // the destination zone the quote was priced for ("domestic",
+  // "north_america", "europe", "rest_of_world").
+  int32 estimated_days = 2;
+  string zone = 3;
 }
 
 message ShipOrderRequest {

@@ -85,10 +85,11 @@ func run(port string) error {
 		),
 	)
 
-	// gRPC server with OTel tracing + Prometheus metrics interceptors
+	// gRPC server with OTel tracing + Prometheus metrics interceptors.
+	// Recovery runs innermost so a recovered panic is still counted as INTERNAL.
 	srv := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
-		grpc.UnaryInterceptor(grpcprom.UnaryServerInterceptor),
+		grpc.ChainUnaryInterceptor(grpcprom.UnaryServerInterceptor, shipping.RecoveryUnaryInterceptor(log)),
 		grpc.StreamInterceptor(grpcprom.StreamServerInterceptor),
 	)
 

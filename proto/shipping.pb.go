@@ -262,8 +262,13 @@ func (x *GetQuoteRequest) GetItems() []*CartItem {
 }
 
 type GetQuoteResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CostUsd       *Money                 `protobuf:"bytes,1,opt,name=cost_usd,json=costUsd,proto3" json:"cost_usd,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	CostUsd *Money                 `protobuf:"bytes,1,opt,name=cost_usd,json=costUsd,proto3" json:"cost_usd,omitempty"`
+	// Added in the zones change (additive): simulated transit time in days and
+	// the destination zone the quote was priced for ("domestic",
+	// "north_america", "europe", "rest_of_world").
+	EstimatedDays int32  `protobuf:"varint,2,opt,name=estimated_days,json=estimatedDays,proto3" json:"estimated_days,omitempty"`
+	Zone          string `protobuf:"bytes,3,opt,name=zone,proto3" json:"zone,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -303,6 +308,20 @@ func (x *GetQuoteResponse) GetCostUsd() *Money {
 		return x.CostUsd
 	}
 	return nil
+}
+
+func (x *GetQuoteResponse) GetEstimatedDays() int32 {
+	if x != nil {
+		return x.EstimatedDays
+	}
+	return 0
+}
+
+func (x *GetQuoteResponse) GetZone() string {
+	if x != nil {
+		return x.Zone
+	}
+	return ""
 }
 
 type ShipOrderRequest struct {
@@ -422,9 +441,11 @@ const file_proto_shipping_proto_rawDesc = "" +
 	"\x05nanos\x18\x03 \x01(\x05R\x05nanos\"n\n" +
 	"\x0fGetQuoteRequest\x12.\n" +
 	"\aaddress\x18\x01 \x01(\v2\x14.hipstershop.AddressR\aaddress\x12+\n" +
-	"\x05items\x18\x02 \x03(\v2\x15.hipstershop.CartItemR\x05items\"A\n" +
+	"\x05items\x18\x02 \x03(\v2\x15.hipstershop.CartItemR\x05items\"|\n" +
 	"\x10GetQuoteResponse\x12-\n" +
-	"\bcost_usd\x18\x01 \x01(\v2\x12.hipstershop.MoneyR\acostUsd\"o\n" +
+	"\bcost_usd\x18\x01 \x01(\v2\x12.hipstershop.MoneyR\acostUsd\x12%\n" +
+	"\x0eestimated_days\x18\x02 \x01(\x05R\restimatedDays\x12\x12\n" +
+	"\x04zone\x18\x03 \x01(\tR\x04zone\"o\n" +
 	"\x10ShipOrderRequest\x12.\n" +
 	"\aaddress\x18\x01 \x01(\v2\x14.hipstershop.AddressR\aaddress\x12+\n" +
 	"\x05items\x18\x02 \x03(\v2\x15.hipstershop.CartItemR\x05items\"4\n" +
