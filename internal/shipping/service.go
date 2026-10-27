@@ -97,8 +97,7 @@ func (s *Service) ShipOrder(_ context.Context, req *pb.ShipOrderRequest) (*pb.Sh
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	baseAddress := fmt.Sprintf("%s, %s, %s", addr.GetStreetAddress(), addr.GetCity(), addr.GetState())
-	id := TrackingID(baseAddress)
+	id := TrackingID(OrderSalt(addr, code, req.GetItems()))
 	s.log.WithFields(logrus.Fields{"country": code, "zone": ZoneForCountry(code)}).Info("[ShipOrder] shipped")
 
 	return &pb.ShipOrderResponse{TrackingId: id}, nil
