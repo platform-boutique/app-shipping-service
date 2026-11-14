@@ -57,7 +57,8 @@ func TestShipOrder_TrackingIDDiffersPerContent(t *testing.T) {
 }
 
 func TestTrackingID_Deterministic(t *testing.T) {
-	if TrackingID("x") != TrackingID("x") {
+	first, second := TrackingID("x"), TrackingID("x")
+	if first != second {
 		t.Error("TrackingID must be deterministic")
 	}
 }
