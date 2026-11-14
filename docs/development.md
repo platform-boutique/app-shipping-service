@@ -28,17 +28,20 @@ grpcurl -plaintext -d '{
 
 grpcurl -plaintext localhost:50051 grpc.health.v1.Health/Check
 curl -s localhost:9090/metrics | grep grpc_server
-curl -s localhost:9090/debug/pprof/ | head
+# pprof is off; PPROF_ADDR=127.0.0.1:6060 serves it on its own port
 ```
 
 ## Project structure
 
 ```
-├── cmd/server/main.go            # entrypoint: tracing, profiling, gRPC server, metrics + pprof server
+├── cmd/server/main.go            # entrypoint: obs.Start, gRPC server, graceful shutdown
+├── internal/obs/                 # observability kit (env contract, JSON logs with trace ids, OTLP, build_info, :9090); same package in every Go service
 ├── internal/shipping/
-│   ├── service.go                # GetQuote / ShipOrder handlers
-│   ├── quote.go                  # flat-rate quote logic ($8.99)
-│   └── tracker.go                # random tracking-ID generation
+│   ├── service.go                # GetQuote / ShipOrder handlers, recovery interceptor
+│   ├── quote.go                  # zones, tariff table, quote logic
+│   ├── address.go                # country normalisation, ShipOrder address validation
+│   ├── countries.go              # ISO country list, aliases, ResolveCountry (shared by GetQuote and ShipOrder)
+│   └── tracker.go                # deterministic tracking-ID generation
 ├── proto/                        # shipping.proto + generated Go
 ├── Dockerfile
 ├── go.mod / go.sum

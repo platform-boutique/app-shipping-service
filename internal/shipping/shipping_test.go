@@ -46,41 +46,6 @@ func TestQuoteFromFloat_LargeValue(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// QuoteFromCount
-// ---------------------------------------------------------------------------
-
-func TestQuoteFromCount_ZeroItems(t *testing.T) {
-	q := QuoteFromCount(0)
-	if q.Dollars != 0 || q.Cents != 0 {
-		t.Errorf("expected $0.00 for empty shipment, got $%d.%d", q.Dollars, q.Cents)
-	}
-}
-
-func TestQuoteFromCount_OneItem(t *testing.T) {
-	q := QuoteFromCount(1)
-	if q.Dollars != 8 || q.Cents != 99 {
-		t.Errorf("expected $8.99 for 1 item, got $%d.%d", q.Dollars, q.Cents)
-	}
-}
-
-func TestQuoteFromCount_ManyItems(t *testing.T) {
-	q := QuoteFromCount(100)
-	if q.Dollars != 8 || q.Cents != 99 {
-		t.Errorf("expected flat rate $8.99 for 100 items, got $%d.%d", q.Dollars, q.Cents)
-	}
-}
-
-func TestQuoteFromCount_FlatRate(t *testing.T) {
-	// Any non-zero count should produce the same flat rate
-	q1 := QuoteFromCount(1)
-	q2 := QuoteFromCount(50)
-	q3 := QuoteFromCount(1000)
-	if q1 != q2 || q2 != q3 {
-		t.Errorf("flat rate should be equal for any non-zero count: %v %v %v", q1, q2, q3)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Quote.String
 // ---------------------------------------------------------------------------
 

@@ -1,9 +1,3 @@
-# CVE-2026-22184: zlib overflow in standalone 'untgz' demo utility only.
-# Does not affect core zlib library. Alpine security team deemed irrelevant for Alpine 3.23.
-# Upstream: https://github.com/alpinelinux/docker-alpine/issues/481
-CVE-2026-22184
-
-# CVE-2026-33671: picomatch ReDoS inside npm's internal node_modules.
-# Only exploitable if untrusted glob patterns are passed to picomatch.
-# This service never processes glob patterns — not reachable at runtime.
-CVE-2026-33671
+# Intentionally empty: no accepted findings. The runtime image is alpine + one static Go binary (no npm, no zlib tools of note);
+# Trivy v0.76.1 (CRITICAL,HIGH, no ignore file) reports 0 findings. Add an entry only with a reason and an `exp:YYYY-MM-DD` date.
+# Kept (not deleted) because the generated CI caller references it (`trivyignores: .trivyignore`, platform-demo-workflows tools/gen-callers.py).
