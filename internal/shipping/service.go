@@ -55,13 +55,15 @@ func quoteZone(a *pb.Address) (Zone, error) {
 // GetQuote produces a shipping quote (cost) in USD for the destination zone
 // and the number of items. A country that is given but not recognised is
 // rejected with INVALID_ARGUMENT, the same check ShipOrder applies.
-func (s *Service) GetQuote(_ context.Context, req *pb.GetQuoteRequest) (*pb.GetQuoteResponse, error) {
-	s.log.Info("[GetQuote] received request")
-	defer s.log.Info("[GetQuote] completed request")
+func (s *Service) GetQuote(ctx context.Context, req *pb.GetQuoteRequest) (*pb.GetQuoteResponse, error) {
+	// WithContext: the JSON formatter adds trace_id, span_id and request_id of this call.
+	log := s.log.WithContext(ctx)
+	log.Info("[GetQuote] received request")
+	defer log.Info("[GetQuote] completed request")
 
 	zone, err := quoteZone(req.GetAddress())
 	if err != nil {
-		s.log.WithField("reason", err.Error()).Warn("[GetQuote] rejected country")
+		log.WithError(err).Warn("[GetQuote] rejected country")
 		return nil, status.Error(codes.InvalidArgument, "invalid address: "+err.Error())
 	}
 	count := itemCount(req.GetItems())
@@ -86,19 +88,20 @@ func (s *Service) GetQuote(_ context.Context, req *pb.GetQuoteRequest) (*pb.GetQ
 // ShipOrder mocks shipping the requested items and returns a tracking ID.
 // The address is validated (see ValidateAddress); a missing or invalid one is
 // rejected with INVALID_ARGUMENT.
-func (s *Service) ShipOrder(_ context.Context, req *pb.ShipOrderRequest) (*pb.ShipOrderResponse, error) {
-	s.log.Info("[ShipOrder] received request")
-	defer s.log.Info("[ShipOrder] completed request")
+func (s *Service) ShipOrder(ctx context.Context, req *pb.ShipOrderRequest) (*pb.ShipOrderResponse, error) {
+	log := s.log.WithContext(ctx)
+	log.Info("[ShipOrder] received request")
+	defer log.Info("[ShipOrder] completed request")
 
 	addr := req.GetAddress()
 	code, err := ValidateAddress(addr)
 	if err != nil {
-		s.log.WithField("reason", err.Error()).Warn("[ShipOrder] rejected address")
+		log.WithError(err).Warn("[ShipOrder] rejected address")
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	id := TrackingID(OrderSalt(addr, code, req.GetItems()))
-	s.log.WithFields(logrus.Fields{"country": code, "zone": ZoneForCountry(code)}).Info("[ShipOrder] shipped")
+	log.WithFields(logrus.Fields{"country": code, "zone": ZoneForCountry(code)}).Info("[ShipOrder] shipped")
 
 	return &pb.ShipOrderResponse{TrackingId: id}, nil
 }
@@ -110,7 +113,7 @@ func RecoveryUnaryInterceptor(log *logrus.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				log.WithFields(logrus.Fields{
+				log.WithContext(ctx).WithFields(logrus.Fields{
 					"method": info.FullMethod,
 					"panic":  fmt.Sprint(r),
 					"stack":  string(debug.Stack()),
