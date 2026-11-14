@@ -85,13 +85,13 @@ Multi-stage [`Dockerfile`](Dockerfile):
 
 | Stage | Base | What happens |
 |---|---|---|
-| builder | `golang:1.25.9-alpine` | `go mod download`, then `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" ./cmd/server` |
+| builder | `golang:1.25.9-alpine` | `go mod download`, then `CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X …/internal/obs.Version=… -X …/internal/obs.Commit=…" ./cmd/server` (BuildKit sets the target, so the same Dockerfile builds amd64 and arm64) |
 | runtime | `alpine:3.21` | single binary at `/app/shipping-service` |
 
 - **Entrypoint:** `/app/shipping-service`. `GOTRACEBACK=single`.
-- **User: root** — no `USER` in the Dockerfile; the image runs as UID 0 (verified). Set a non-root `runAsUser` (e.g. `10001`) in Kubernetes; the binary needs no privileges.
-- **Architecture: `amd64` only** (`GOARCH=amd64` hard-coded) — `exec format error` on `arm64` nodes.
-- **EXPOSE:** `50051`, `9090`. **No `HEALTHCHECK`.**
+- **User:** numeric `USER 10001:10001` (no `/etc/passwd` entry needed; the process writes nothing to disk, so a read-only root filesystem works). Build args `SERVICE_VERSION` (default `dev`) and `SERVICE_COMMIT` (default `unknown`) set the OCI labels `version`/`revision` (plus `source`, `licenses=Apache-2.0`) and the ENV of the same names.
+- **Architecture:** built for the target platform (`TARGETARCH`); only the amd64 build was run here, arm64 is **not run**.
+- **EXPOSE:** `50051`, `9090`. **`HEALTHCHECK`:** `nc -z localhost ${PORT:-50051}` (TCP connect to the gRPC port; the service has no `healthcheck` subcommand, so this does not check `SERVING`).
 - **Image size:** ~10 MB. No `.dockerignore`, so `.git` is sent in the build context.
 
 ## Kubernetes deployment notes
@@ -126,7 +126,7 @@ Startup is near-instant; no `startupProbe` needed.
 ```yaml
 securityContext:
   runAsNonRoot: true
-  runAsUser: 10001        # image runs as root by default; any non-zero UID works
+  runAsUser: 10001        # same as the image USER
   runAsGroup: 10001
   readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
@@ -230,4 +230,4 @@ curl -s localhost:9090/metrics | grep grpc_server
 - Address validation is lenient: it checks presence, the country and (for numeric-postcode countries) that a zip is given, not that the address exists or that the zip matches the city. `GetQuote` checks only the country (when given).
 - `ShipOrder` is called by checkout after the card is charged. A country that `ShipOrder` would reject is now rejected by `GetQuote` first (checkout quotes before charging), but a street/city/zip problem is only found by `ShipOrder`, i.e. after payment, until checkout refunds on a failed shipment.
 - pprof is off unless `PPROF_ADDR` is set (it is never on the metrics port).
-- `amd64`-only image that runs as root unless the pod overrides it.
+- The `HEALTHCHECK` only proves the port accepts connections, not that the service reports `SERVING`.
