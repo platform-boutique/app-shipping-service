@@ -32,8 +32,8 @@ flowchart LR
 | **Language / runtime** | Go 1.25 (static binary, `CGO_ENABLED=0`) |
 | **Image** | `mladenovskistefan/shipping-service` |
 | **Protocol / port** | gRPC (HTTP/2, plaintext) on `50051` |
-| **Metrics** | Pushed over OTLP/gRPC (Prometheus registry bridged into OpenTelemetry); `/metrics` on `9090` is still served for debugging |
-| **Health** | Standard `grpc.health.v1.Health/Check` on `50051` — static `SERVING` |
+| **Metrics** | Prometheus `/metrics` on `9090` (scraped by Alloy) and pushed over OTLP/gRPC (registry bridged into OpenTelemetry); `build_info` gauge |
+| **Health** | Standard `grpc.health.v1.Health/Check` on `50051` — `SERVING`, `NOT_SERVING` while draining after SIGTERM |
 | **State** | None |
 | **Depends on** | Nothing (optional: OTLP collector, Pyroscope) |
 | **Called by** | `checkout-service` (`GetQuote`, `ShipOrder`), `frontend` (`GetQuote`) |

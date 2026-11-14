@@ -11,8 +11,8 @@ Part of the [platform-demo](https://github.com/platform-boutique) platform — m
 | **Language / runtime** | Go 1.25 (static binary, `CGO_ENABLED=0`) |
 | **Image** | `mladenovskistefan/shipping-service` |
 | **Protocol / port** | gRPC (HTTP/2, plaintext) on `50051` |
-| **Metrics** | Pushed over OTLP/gRPC (Prometheus registry bridged into OpenTelemetry); `/metrics` on `9090` is still served for debugging |
-| **Health** | Standard `grpc.health.v1.Health/Check` on `50051` — static `SERVING` |
+| **Metrics** | Prometheus `/metrics` on `9090` (scraped by Alloy) and pushed over OTLP/gRPC (registry bridged into OpenTelemetry); `build_info` gauge |
+| **Health** | Standard `grpc.health.v1.Health/Check` on `50051` — `SERVING`, `NOT_SERVING` while draining after SIGTERM |
 | **State** | None |
 | **Depends on** | Nothing (optional: OTLP collector, Pyroscope) |
 | **Called by** | `checkout-service` (`GetQuote`, `ShipOrder`), `frontend` (`GetQuote`) |
@@ -57,21 +57,27 @@ A recovery interceptor turns any handler panic into `INTERNAL` instead of crashi
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `50051` | gRPC listen port |
-| `METRICS_PORT` | `9090` | Prometheus + pprof HTTP port |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs** (scheme required), e.g. `http://alloy.monitoring.svc.cluster.local:4317`. Legacy fallback: `COLLECTOR_SERVICE_ADDR` (`host:port`). Telemetry is on iff an endpoint is set |
-| `ENABLE_TRACING` | — | Legacy switch: `0` forces all telemetry off even if an endpoint is set (it is no longer needed to turn telemetry on) |
-| `OTEL_METRIC_EXPORT_INTERVAL` | `15000` | Milliseconds between metric pushes (Go also accepts durations such as `15s`) |
-| `OTEL_SERVICE_NAME` | `shipping-service` | `service.name` — becomes the Prometheus `job` and the Loki `service_name`; keep the default, dashboards depend on it |
-| `PYROSCOPE_ADDR` | `http://pyroscope:4040` | Profiles use the Pyroscope SDK push protocol (**not** OTLP). Point it at Alloy (`http://alloy.monitoring.svc.cluster.local:4040`), which forwards to Pyroscope, or directly at Pyroscope |
-| `ENABLE_PROFILING` | off | `1` starts the Pyroscope SDK. (pprof HTTP is **not** gated by this — it's always on) |
+| `METRICS_PORT` | `9090` | Port of the Prometheus `/metrics` endpoint (scraped by Alloy). A value that is not a port falls back to `9090` with a warning |
+| `PPROF_ADDR` | unset (no pprof) | `host:port` of a separate pprof listener, e.g. `127.0.0.1:6060`. Off unless set; never expose it. pprof is never served on the metrics port |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`; anything else falls back to `info` with a warning |
+| `SERVICE_VERSION` | build info, else `dev` | `service.version`, the `version` log field and the `build_info` label. Fallbacks in order: ldflags `-X <module>/internal/obs.Version=...` (and `.Commit=`, `.BuildTime=`), the VCS revision Go embeds in the binary (12 characters, `-dirty` if modified), `dev` |
+| `DEPLOYMENT_ENVIRONMENT` | `local` | `deployment.environment` on every signal and the Pyroscope tag `environment` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs**, e.g. `http://alloy:4317`. Telemetry is on only if this is a valid absolute http(s) URL; empty or malformed means off (one warning, never a crash). The legacy `COLLECTOR_SERVICE_ADDR` and `ENABLE_TRACING` are no longer read |
+| `OTEL_SDK_DISABLED` | unset | `true` (trimmed, case-insensitive) forces everything off: OTLP export and profiling, even if an endpoint or `PYROSCOPE_ADDR` is set |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | Documented knob; only gRPC is implemented, the value is not read |
+| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | SDK default (`parentbased_always_on`) | Standard OpenTelemetry sampler variables, read by the SDK (tested for `always_on` and `always_off`) |
+| `OTEL_RESOURCE_ATTRIBUTES` | unset | Extra resource attributes (`k=v,...`); applied after the defaults, so they can override them |
+| `OTEL_SERVICE_NAME` | `shipping-service` | `service.name`; keep the default, dashboards depend on it |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `15000` | Milliseconds between metric pushes (also accepts durations such as `15s`) |
+| `PYROSCOPE_ADDR` | unset (profiling off) | Pyroscope URL (SDK push protocol, not OTLP). The only switch: no default address, `ENABLE_PROFILING=1` alone starts nothing |
+| `ENABLE_PROFILING` | unset | `0` forces profiling off even with `PYROSCOPE_ADDR`; any other value changes nothing |
 
 Notes:
 
-- The Pyroscope application name is hard-coded to `shipping-service`.
-- Unlike `checkout-service` and `product-catalog-service`, pprof endpoints are registered unconditionally. Do not expose `:9090` outside the cluster; keep it ClusterIP-only / NetworkPolicy-restricted.
-- Telemetry is **pushed**, not scraped: traces, metrics and logs share one OTLP/gRPC endpoint (Alloy); profiles go to Pyroscope (via Alloy). `service.instance.id` is the pod hostname, so replicas stay distinct in Mimir.
-- A Prometheus `/metrics` endpoint is still served on `METRICS_PORT` for debugging, but nothing has to scrape it — the same registry is bridged into OTLP, so metric names are unchanged.
-- Logs: the `logrus` logger keeps writing JSON to stdout and additionally mirrors every record over OTLP (with trace ids when a context is attached).
+- The Pyroscope application name follows `service.name` (`OTEL_SERVICE_NAME`, default `shipping-service`).
+- Traces, metrics and logs share one OTLP/gRPC endpoint (Alloy); profiles go to Pyroscope. `service.instance.id` is the pod hostname, so replicas stay distinct in Mimir. Metrics are also scraped from `:9090/metrics`.
+- `/metrics` on `METRICS_PORT` (default 9090) serves the Prometheus registry plus `build_info`; the same registry is bridged into OTLP, so metric names are the same on both paths. pprof used to be registered on this port unconditionally; it is now off unless `PPROF_ADDR` is set.
+- Logs: JSON on stdout in the shape described under Observability, mirrored over OTLP when telemetry is on. The handlers log with `log.WithContext(ctx)` so the line carries `trace_id`/`span_id`. The address of an order is never logged (only the validation message, the ISO country and the zone).
 
 ## Container image
 
@@ -97,7 +103,7 @@ Multi-stage [`Dockerfile`](Dockerfile):
 | Name | Port | Protocol | Expose via Service? |
 |---|---|---|---|
 | `grpc` | `50051` | TCP (HTTP/2) | Yes — callers dial `shipping-service:50051` |
-| `metrics` | `9090` | TCP (HTTP/1.1) | Optional (debugging/pprof). Not scraped by default — metrics are pushed over OTLP |
+| `metrics` | `9090` | TCP (HTTP/1.1) | Prometheus `/metrics` (scraped by Alloy in the local stack; the same metrics are also pushed over OTLP). pprof is not served here |
 
 **Service DNS name expected by callers:** `shipping-service` (`frontend` and `checkout-service`: `SHIPPING_SERVICE_ADDR=shipping-service:50051`). `payment-service` also uses `50051` — different Service, no clash.
 
@@ -149,10 +155,22 @@ and was verified in the earlier local phase on a 3-node kind cluster (since dele
 
 | Signal | Implementation | Destination |
 |---|---|---|
-| **Traces** | OpenTelemetry (`otelgrpc`/`otelhttp` handlers), OTLP/gRPC exporter, `AlwaysSample`, W3C TraceContext + Baggage; the trace context is propagated to every downstream call | Alloy `:4317` → Tempo |
-| **Metrics** | The Prometheus default registry (`grpc_server_handled_total`, `grpc_server_handling_seconds_*`, `grpc_server_started_total`, `grpc_server_msg_*`, Go runtime/process) is bridged into OpenTelemetry and pushed over OTLP/gRPC every 15 s — metric names are unchanged. `/metrics` is still served for debugging | Alloy → Mimir |
-| **Logs** | `logrus` JSON to stdout **and** an OTLP/gRPC hook (`otellogrus`) | Alloy → Loki |
-| **Profiles** | Pyroscope Go SDK (CPU, alloc/inuse objects & space) plus pprof HTTP (always on) | Alloy `:4040` → Pyroscope |
+| **Traces** | OpenTelemetry (`otelgrpc` handlers), OTLP/gRPC exporter (batch processor, queue bounded at 2048), W3C TraceContext + Baggage propagated to every downstream call. Sampler from `OTEL_TRACES_SAMPLER` (SDK default `parentbased_always_on`) | Alloy `:4317` -> Tempo |
+| **Metrics** | Prometheus default registry: `grpc_server_handled_total`, `grpc_server_handling_seconds_*`, `grpc_server_started_total`, `grpc_server_msg_*`, Go runtime/process. Served as Prometheus text on `:9090/metrics` (`METRICS_PORT`) and, because the same registry is bridged into OpenTelemetry, also pushed over OTLP every 15 s (metric names identical). Plus `build_info{service,version,commit} 1` | Alloy scrapes `:9090` -> Mimir |
+| **Logs** | `logrus`, one JSON object per line on stdout, plus an OTLP/gRPC hook (`otellogrus`) | stdout -> Alloy -> Loki; OTLP -> Alloy -> Loki |
+| **Profiles** | Pyroscope Go SDK (CPU, alloc/in-use objects and space, goroutines, mutex, block), only with `PYROSCOPE_ADDR`; tags `service_name`, `version`, `environment` | Pyroscope |
+
+**Telemetry contract** (the code is `internal/obs`, the same package in every Go service): telemetry is on only if `OTEL_EXPORTER_OTLP_ENDPOINT` is a valid absolute http(s) URL; `OTEL_SDK_DISABLED=true` forces everything off (profiling too); profiling only with `PYROSCOPE_ADDR`. Start never waits for the collector (the exporters connect in the background) and on SIGTERM the flush is cut off after 4 s, so a blackholed collector cannot hold the process (unit-tested with a listener that never answers: start and shutdown both return within the bound).
+
+**Resource attributes** on every signal: `service.name` (`OTEL_SERVICE_NAME`, default `shipping-service`), `service.version` (`SERVICE_VERSION`, else build info, else `dev`), `service.namespace=everly`, `deployment.environment` (`DEPLOYMENT_ENVIRONMENT`, default `local`), `service.instance.id` (hostname). `OTEL_RESOURCE_ATTRIBUTES` is applied last.
+
+**Log shape** (one shape for all services): `timestamp` (RFC 3339, UTC, milliseconds), `severity` (`debug`, `info`, `warning`, `error`), `message`, `service`, `version`, `trace_id` and `span_id` (hex, only while a valid span is active, never empty or all zeros), `request_id` (when the caller sent one), `error` (string, on errors), plus the call's own fields (for example `order_id`). Level from `LOG_LEVEL`. `trace_id`/`span_id` come from the context of the log call: handlers and clients log with `log.WithContext(ctx)`, the formatter reads the span from it. Calls without a context (startup, background work) have no ids. No card data, tokens or e-mail addresses are logged.
+
+**Startup and version**: the first line is `message: "starting"` with `version`, `commit` and `environment`; `version`/`commit` come from `SERVICE_VERSION`, ldflags `-X <module>/internal/obs.Version=` / `.Commit=`, or the VCS data Go embeds (no Dockerfile change was made: without any of them a container image reports `version: "dev"`, `commit: "unknown"`). Panics are logged as one JSON line (`message: "panic"`, `error`) before the process dies; a startup error is one JSON error line, exit 1.
+
+**pprof** is off. `PPROF_ADDR=127.0.0.1:6060` starts a separate listener; it is never on the metrics port.
+
+**Graceful shutdown** (SIGTERM or SIGINT): the health status turns `NOT_SERVING`, the gRPC server stops accepting and lets in-flight calls finish (`GracefulStop`, forced stop after 5 s), then the telemetry flush runs, cut off after 4 s: the process exits within 9 s even when the collector is blackholed. Run against a listener that never answers (OTLP and Pyroscope both pointed at it) the binary exited 0 about 4 s after SIGTERM (smoke run, not part of the unit tests).
 
 Every series carries `job="shipping-service"` (from `service.name`) and `instance=<pod name>` (`service.instance.id`), which is what the Grafana dashboards select on. Logs land in Loki with `service_name="shipping-service"` and trace/span ids, so a log line links to its trace.
 
@@ -184,13 +202,14 @@ grpcurl -plaintext -d '{
 
 grpcurl -plaintext localhost:50051 grpc.health.v1.Health/Check
 curl -s localhost:9090/metrics | grep grpc_server
-curl -s localhost:9090/debug/pprof/ | head
+# pprof is off; PPROF_ADDR=127.0.0.1:6060 serves it on its own port
 ```
 
 ## Project structure
 
 ```
-├── cmd/server/main.go            # entrypoint: tracing, profiling, gRPC server, metrics + pprof server
+├── cmd/server/main.go            # entrypoint: obs.Start, gRPC server, graceful shutdown
+├── internal/obs/                 # observability kit (env contract, JSON logs with trace ids, OTLP, build_info, :9090); same package in every Go service
 ├── internal/shipping/
 │   ├── service.go                # GetQuote / ShipOrder handlers, recovery interceptor
 │   ├── quote.go                  # zones, tariff table, quote logic
@@ -210,5 +229,5 @@ curl -s localhost:9090/debug/pprof/ | head
 - Quotes ignore weight and size (the request has none) and the state/zip; the zone table is a fixed, made-up tariff.
 - Address validation is lenient: it checks presence, the country and (for numeric-postcode countries) that a zip is given, not that the address exists or that the zip matches the city. `GetQuote` checks only the country (when given).
 - `ShipOrder` is called by checkout after the card is charged. A country that `ShipOrder` would reject is now rejected by `GetQuote` first (checkout quotes before charging), but a street/city/zip problem is only found by `ShipOrder`, i.e. after payment, until checkout refunds on a failed shipment.
-- pprof is always exposed on the metrics port.
+- pprof is off unless `PPROF_ADDR` is set (it is never on the metrics port).
 - `amd64`-only image that runs as root unless the pod overrides it.

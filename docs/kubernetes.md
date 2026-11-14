@@ -7,7 +7,7 @@
 | Name | Port | Protocol | Expose via Service? |
 |---|---|---|---|
 | `grpc` | `50051` | TCP (HTTP/2) | Yes — callers dial `shipping-service:50051` |
-| `metrics` | `9090` | TCP (HTTP/1.1) | Optional (debugging/pprof). Not scraped by default — metrics are pushed over OTLP |
+| `metrics` | `9090` | TCP (HTTP/1.1) | Prometheus `/metrics` (scraped by Alloy in the local stack; the same metrics are also pushed over OTLP). pprof is not served here |
 
 **Service DNS name expected by callers:** `shipping-service` (`frontend` and `checkout-service`: `SHIPPING_SERVICE_ADDR=shipping-service:50051`). `payment-service` also uses `50051` — different Service, no clash.
 
