@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"shipping-service/internal/healthcheck"
 	"shipping-service/internal/obs"
 	"shipping-service/internal/shipping"
 	pb "shipping-service/proto"
@@ -30,6 +31,12 @@ var log = logrus.New()
 const drainTimeout = 5 * time.Second
 
 func main() {
+	// `shipping-service healthcheck` is the container health probe: exit 0 only while the server reports SERVING.
+	// It runs before obs.Start so the probe starts no telemetry and writes no log line.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(healthcheck.Check(listenPort()))
+	}
+
 	// Logger, env contract (OTEL_*, PYROSCOPE_ADDR), OTLP pipelines, Pyroscope, build_info and
 	// /metrics on :9090 live in internal/obs. pprof is served only if PPROF_ADDR is set.
 	o := obs.Start(context.Background(), obs.Options{
@@ -39,10 +46,7 @@ func main() {
 	defer o.Recover()
 	defer o.Shutdown()
 
-	port := "50051"
-	if p := os.Getenv("PORT"); p != "" {
-		port = p
-	}
+	port := listenPort()
 
 	log.Infof("starting grpc server on :%s", port)
 	if err := run(port); err != nil {
@@ -105,4 +109,12 @@ func serve(ctx context.Context, listener net.Listener, drain time.Duration) erro
 		return err
 	}
 	return nil
+}
+
+// listenPort is the gRPC port: PORT, default 50051.
+func listenPort() string {
+	if p := os.Getenv("PORT"); p != "" {
+		return p
+	}
+	return "50051"
 }

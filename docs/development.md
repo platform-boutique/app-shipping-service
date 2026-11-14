@@ -35,6 +35,7 @@ curl -s localhost:9090/metrics | grep grpc_server
 
 ```
 ├── cmd/server/main.go            # entrypoint: obs.Start, gRPC server, graceful shutdown
+├── internal/healthcheck/healthcheck.go     # `healthcheck` subcommand (container HEALTHCHECK): grpc.health.v1 Check on the own port
 ├── internal/obs/                 # observability kit (env contract, JSON logs with trace ids, OTLP, build_info, :9090); same package in every Go service
 ├── internal/shipping/
 │   ├── service.go                # GetQuote / ShipOrder handlers, recovery interceptor

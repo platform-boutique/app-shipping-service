@@ -91,7 +91,7 @@ Multi-stage [`Dockerfile`](Dockerfile):
 - **Entrypoint:** `/app/shipping-service`. `GOTRACEBACK=single`.
 - **User:** numeric `USER 10001:10001` (no `/etc/passwd` entry needed; the process writes nothing to disk, so a read-only root filesystem works). Build args `SERVICE_VERSION` (default `dev`) and `SERVICE_COMMIT` (default `unknown`) set the OCI labels `version`/`revision` (plus `source`, `licenses=Apache-2.0`) and the ENV of the same names.
 - **Architecture:** built for the target platform (`TARGETARCH`); only the amd64 build was run here, arm64 is **not run**.
-- **EXPOSE:** `50051`, `9090`. **`HEALTHCHECK`:** `nc -z localhost ${PORT:-50051}` (TCP connect to the gRPC port; the service has no `healthcheck` subcommand, so this does not check `SERVING`).
+- **EXPOSE:** `50051`, `9090`. **`HEALTHCHECK`:** exec form `["/app/shipping-service", "healthcheck"]` (no shell, no `nc`/`wget`): the subcommand calls `grpc.health.v1.Health/Check` on `127.0.0.1:${PORT:-50051}` with a 3 s deadline and exits 0 only for `SERVING`. Run locally: `shipping-service healthcheck` (prints the status, exit code 0 or 1).
 - **Image size:** ~10 MB. No `.dockerignore`, so `.git` is sent in the build context.
 
 ## Kubernetes deployment notes
@@ -209,6 +209,7 @@ curl -s localhost:9090/metrics | grep grpc_server
 
 ```
 ├── cmd/server/main.go            # entrypoint: obs.Start, gRPC server, graceful shutdown
+├── internal/healthcheck/healthcheck.go     # `healthcheck` subcommand (container HEALTHCHECK): grpc.health.v1 Check on the own port
 ├── internal/obs/                 # observability kit (env contract, JSON logs with trace ids, OTLP, build_info, :9090); same package in every Go service
 ├── internal/shipping/
 │   ├── service.go                # GetQuote / ShipOrder handlers, recovery interceptor
@@ -230,4 +231,4 @@ curl -s localhost:9090/metrics | grep grpc_server
 - Address validation is lenient: it checks presence, the country and (for numeric-postcode countries) that a zip is given, not that the address exists or that the zip matches the city. `GetQuote` checks only the country (when given).
 - `ShipOrder` is called by checkout after the card is charged. A country that `ShipOrder` would reject is now rejected by `GetQuote` first (checkout quotes before charging), but a street/city/zip problem is only found by `ShipOrder`, i.e. after payment, until checkout refunds on a failed shipment.
 - pprof is off unless `PPROF_ADDR` is set (it is never on the metrics port).
-- The `HEALTHCHECK` only proves the port accepts connections, not that the service reports `SERVING`.
+- The `HEALTHCHECK` reports `SERVING` of the gRPC health service, which is static for the service itself (it does not reflect downstream or database health).

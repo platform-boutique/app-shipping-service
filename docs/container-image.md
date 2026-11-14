@@ -10,5 +10,5 @@ Multi-stage [`Dockerfile`](https://github.com/platform-boutique/app-shipping-ser
 - **Entrypoint:** `/app/shipping-service`. `GOTRACEBACK=single`.
 - **User: root** — no `USER` in the Dockerfile; the image runs as UID 0 (verified). Set a non-root `runAsUser` (e.g. `10001`) in Kubernetes; the binary needs no privileges.
 - **Architecture: `amd64` only** (`GOARCH=amd64` hard-coded) — `exec format error` on `arm64` nodes.
-- **EXPOSE:** `50051`, `9090`. **No `HEALTHCHECK`.**
+- **EXPOSE:** `50051`, `9090`. **`HEALTHCHECK`:** exec form `["/app/shipping-service", "healthcheck"]` (gRPC `grpc.health.v1` Check on `127.0.0.1:${PORT:-50051}`, 3 s deadline, no shell tools).
 - **Image size:** ~10 MB. No `.dockerignore`, so `.git` is sent in the build context.
