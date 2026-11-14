@@ -28,7 +28,7 @@ func TestServe_StopsGracefullyWhenContextEnds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	callCtx, callCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer callCancel()
 	resp, err := healthpb.NewHealthClient(conn).Check(callCtx, &healthpb.HealthCheckRequest{}, grpc.WaitForReady(true))
@@ -49,7 +49,7 @@ func TestServe_StopsGracefullyWhenContextEnds(t *testing.T) {
 		t.Fatal("serve did not return after the context ended")
 	}
 	if c, err := net.DialTimeout("tcp", ln.Addr().String(), 2*time.Second); err == nil {
-		c.Close()
+		_ = c.Close()
 		t.Error("port still open after shutdown")
 	}
 }
