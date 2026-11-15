@@ -5,6 +5,7 @@ ARG TARGETOS TARGETARCH
 # Build identity, linked into internal/obs (read by the service at start)
 ARG SERVICE_VERSION=dev
 ARG SERVICE_COMMIT=unknown
+ARG BUILD_TIME=
 
 WORKDIR /app
 
@@ -13,7 +14,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
-    -ldflags="-s -w -X shipping-service/internal/obs.Version=${SERVICE_VERSION} -X shipping-service/internal/obs.Commit=${SERVICE_COMMIT}" \
+    -ldflags="-s -w -X shipping-service/internal/obs.Version=${SERVICE_VERSION} -X shipping-service/internal/obs.Commit=${SERVICE_COMMIT} -X shipping-service/internal/obs.BuildTime=${BUILD_TIME}" \
     -o /shipping-service \
     ./cmd/server
 
