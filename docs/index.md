@@ -7,7 +7,7 @@ A gRPC service that provides shipping quotes and "ships" orders for the platform
 </div>
 
 <div class="pd-facts" markdown>
-<div><span>Runtime</span><strong>Go 1.25</strong><small>Go</small></div>
+<div><span>Runtime</span><strong>Go 1.26</strong><small>Go</small></div>
 <div><span>Listens on</span><strong>50051</strong><small>gRPC</small></div>
 <div><span>State</span><strong>Stateless</strong></div>
 <div><span>Image</span><strong>shipping-service</strong><small>mladenovskistefan/</small></div>
@@ -16,6 +16,8 @@ A gRPC service that provides shipping quotes and "ships" orders for the platform
 ## Where it sits
 
 Called by `frontend`, `checkout-service`. It has no downstream dependencies.
+
+Pages: [architecture](architecture.md), [API](api.md), [configuration](configuration.md), [observability](observability.md), [operations](operations.md), [development](development.md), [decisions](adr/0001-deterministic-tracking-id.md).
 
 ```mermaid
 flowchart LR
@@ -29,7 +31,7 @@ flowchart LR
 
 | | |
 |---|---|
-| **Language / runtime** | Go 1.25 (static binary, `CGO_ENABLED=0`) |
+| **Language / runtime** | Go 1.26 (`go 1.26.11` in `go.mod`; static binary, `CGO_ENABLED=0`) |
 | **Image** | `mladenovskistefan/shipping-service` |
 | **Protocol / port** | gRPC (HTTP/2, plaintext) on `50051` |
 | **Metrics** | Prometheus `/metrics` on `9090` (scraped by Alloy) and pushed over OTLP/gRPC (registry bridged into OpenTelemetry); `build_info` gauge |

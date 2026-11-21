@@ -4,7 +4,7 @@ Multi-stage [`Dockerfile`](https://github.com/platform-boutique/app-shipping-ser
 
 | Stage | Base | What happens |
 |---|---|---|
-| builder | `golang:1.25.9-alpine` | `go mod download`, then `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" ./cmd/server` |
+| builder | `golang:1.26-alpine` | `go mod download`, then `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" ./cmd/server` |
 | runtime | `alpine:3.21` | single binary at `/app/shipping-service` |
 
 - **Entrypoint:** `/app/shipping-service`. `GOTRACEBACK=single`.

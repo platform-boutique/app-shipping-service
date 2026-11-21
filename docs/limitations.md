@@ -5,4 +5,4 @@
 - Address validation is lenient: it checks presence, the country and (for numeric-postcode countries) that a zip is given, not that the address exists or that the zip matches the city. `GetQuote` checks only the country (when given).
 - `ShipOrder` is called by checkout after the card is charged. A country that `ShipOrder` would reject is now rejected by `GetQuote` first (checkout quotes before charging), but a street/city/zip problem is only found by `ShipOrder`, i.e. after payment, until checkout refunds on a failed shipment.
 - pprof is off unless `PPROF_ADDR` is set (it is never on the metrics port).
-- `amd64`-only image that runs as root unless the pod overrides it.
+- The image is `linux/amd64` only (owner decision 2026-11-14) and runs as the numeric user `10001:10001`.
