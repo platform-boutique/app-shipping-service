@@ -12,7 +12,7 @@ curl -s localhost:9090/metrics | grep grpc_server
 
 ## Shutdown
 
-On SIGTERM or SIGINT the health service goes `NOT_SERVING`, the server stops accepting and `GracefulStop` lets in-flight calls finish for at most 5 s (`drainTimeout`), after which the server is cut off with `Stop`. The telemetry flush is bounded at 4 s (`obs.DefaultShutdownTimeout`), so the process exits within 9 s even with an unreachable collector. The drain path has unit tests (`cmd/server/main_test.go`); a measured `docker stop` was not run for this page.
+On SIGTERM or SIGINT the health service goes `NOT_SERVING`, the server stops accepting and `GracefulStop` lets in-flight calls finish for at most 5 s (`drainTimeout`), after which the server is cut off with `Stop`. The telemetry flush is bounded at 4 s (`obs.DefaultShutdownTimeout`), so the process exits within 9 s even with an unreachable collector. The drain path has unit tests (`cmd/server/main_test.go`); a `docker stop` of the final image on 2026-11-22 (idle service) exited 0 in under 1 s; a stop under load or with an unreachable collector was not measured on the image.
 
 ## Scaling and replicas
 

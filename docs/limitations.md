@@ -6,3 +6,4 @@
 - `ShipOrder` is called by checkout after the card is charged. A country that `ShipOrder` would reject is now rejected by `GetQuote` first (checkout quotes before charging), but a street/city/zip problem is only found by `ShipOrder`, i.e. after payment, until checkout refunds on a failed shipment.
 - pprof is off unless `PPROF_ADDR` is set (it is never on the metrics port).
 - The image is `linux/amd64` only (owner decision 2026-11-14) and runs as the numeric user `10001:10001`.
+- No business counter: OBS-20 names orders, reservations and payments, none of which this service owns; RED, `build_info` and runtime metrics exist. The service has no integration tests (no external dependency); its gRPC tests run in process.
